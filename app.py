@@ -19,7 +19,7 @@ CORS(app, resources={r"/*": {"origins": "https://z-labo.github.io"}})
 
 # 환경변수에서 Dropbox 토큰 읽기
 DROPBOX_TOKEN = os.environ.get("DROPBOX_TOKEN")
-DROPBOX_BASE_FOLDER = "/vote_results"  # Dropbox 안의 저장 폴더 (미리 하나 만들어 두는 것을 권장)
+DROPBOX_BASE_FOLDER = "/Scoring"  # Dropbox 안의 저장 폴더 (미리 하나 만들어 두는 것을 권장)
 
 if not DROPBOX_TOKEN:
   raise RuntimeError("환경변수 DROPBOX_TOKEN 이 설정되어 있지 않습니다.")

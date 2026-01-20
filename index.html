@@ -380,96 +380,96 @@
     URL.revokeObjectURL(url);
   }
 
-  async function submitToDropbox() {
-  const evaluatorEl = document.getElementById('evaluatorName'); // 평가자 입력칸 id
-  let evaluator = evaluatorEl ? evaluatorEl.value.trim() : '';
+  async function submitToDropbox() { 
+    const evaluatorEl = document.getElementById('evaluatorName'); // 평가자 입력칸 id
+    let evaluator = evaluatorEl ? evaluatorEl.value.trim() : ''; 
+    
+    if (!evaluator) { 
+      evaluator = prompt('評価者氏名を入力してください（姓と名の間にスペースは入れないでください）', '') || '';
+      evaluator = evaluator.trim(); 
+      if (evaluatorEl) evaluatorEl.value = evaluator; // 입력칸에 반영
+    }
 
-  if (!evaluator) {
-    evaluator = prompt('評価者氏名を入力してください（姓と名の間にスペースは入れないでください）', '') || '';
-    evaluator = evaluator.trim();
-    if (evaluatorEl) evaluatorEl.value = evaluator; // 입력칸에 반영
-  }
+    if (!evaluator) {
+      alert('評価者氏名が未入力のため、提出できません。');
+      return;
+    }
 
-  if (!evaluator) {
-    alert('評価者氏名が未入力のため、提出できません。');
-    return;
-  }
+    if (/\s/.test(evaluator)) {
+      alert('姓と名の間にスペースを入れないでください。');
+      return;
+    }
 
-  if (/\s/.test(evaluator)) {
-    alert('姓と名の間にスペースを入れないでください。');
-    return;
-  }
+    // 2) 점수 데이터
+    const scores = loadScores();
 
-  // 2) 점수 데이터
-  const scores = loadScores();
+    // (선택) 미입력 항목이 있으면 막기: 원하면 주석 해제
+    const allItemsCount = Object.values(DATA.items_by_date).reduce((acc, arr) => acc + arr.length, 0);
+    const filled = Object.values(scores).filter(v => typeof v === 'number').length;
+      if (filled !== allItemsCount) { 
+        alert(`未入力があります（${filled}/${allItemsCount}）。すべて入力してから提出してください。`);
+      return;
+    }
 
-  // (선택) 미입력 항목이 있으면 막기: 원하면 주석 해제
-  const allItemsCount = Object.values(DATA.items_by_date).reduce((acc, arr) => acc + arr.length, 0);
-  const filled = Object.values(scores).filter(v => typeof v === 'number').length;
-    if (filled !== allItemsCount) { 
-      alert(`未入力があります（${filled}/${allItemsCount}）。すべて入力してから提出してください。`);
-    return;
-  }
+    // 3) payload 구성 (서버에서 그대로 저장/업로드하기 좋게 정규화)
+    const entries = [];
+    for (const date of DATA.dates) {
+      for (const item of DATA.items_by_date[date]) {
+        const k = keyFor(item);
+        const score = (typeof scores[k] === 'number') ? scores[k] : null;
+        entries.push({
+          date,
+          time: item.time,
+          no: item.no,
+          presenter: item.presenter,
+          title: item.title,
+          score
+        });
+      }
+    }
 
-  // 3) payload 구성 (서버에서 그대로 저장/업로드하기 좋게 정규화)
-  const entries = [];
-  for (const date of DATA.dates) {
-    for (const item of DATA.items_by_date[date]) {
-      const k = keyFor(item);
-      const score = (typeof scores[k] === 'number') ? scores[k] : null;
-      entries.push({
-        date,
-        time: item.time,
-        no: item.no,
-        presenter: item.presenter,
-        title: item.title,
-        score
+    const payload = {
+      evaluator,                   // 평가자 이름
+      timestamp: new Date().toISOString(),
+      results: entries
+    };
+
+    // 4) 서버로 전송 (서버가 Dropbox 업로드 수행)
+    const status = document.getElementById('status'); // 없으면 아래 두 줄을 지우고 alert로 대체
+    if (status) {
+      status.textContent = 'Sending to server...';
+      status.className = 'status';
+    }
+
+    try {
+      const res = await fetch('https://vote-nit6.onrender.com/submit_vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error('HTTP ' + res.status + ' ' + text);
+      }
+      const data = await res.json();
+
+      if (status) {
+        status.textContent = 'Upload to Dropbox completed: ' + (data.path || '');
+        status.className = 'status success';
+      } else {
+        alert('送信に成功しました: ' + (data.path || ''));
+      }
+    } catch (err) {
+      console.error(err);
+      if (status) {
+        status.textContent = 'An error occurred while sending to the server / uploading to Dropbox. (Please contact the administrator.)';
+        status.className = 'status error';
+      } else {
+        alert('送信/アップロードに失敗しました。管理者に連絡してください。');
+      }
     }
   }
-
-  const payload = {
-    evaluator,                   // 평가자 이름
-    timestamp: new Date().toISOString(),
-    results: entries
-  };
-
-  // 4) 서버로 전송 (서버가 Dropbox 업로드 수행)
-  const status = document.getElementById('status'); // 없으면 아래 두 줄을 지우고 alert로 대체
-  if (status) {
-    status.textContent = 'Sending to server...';
-    status.className = 'status';
-  }
-
-  try {
-    const res = await fetch('https://vote-nit6.onrender.com/submit_vote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error('HTTP ' + res.status + ' ' + text);
-    }
-    const data = await res.json();
-
-    if (status) {
-      status.textContent = 'Upload to Dropbox completed: ' + (data.path || '');
-      status.className = 'status success';
-    } else {
-      alert('Upload to Dropbox completed: ' + (data.path || ''));
-    }
-  } catch (err) {
-    console.error(err);
-    if (status) {
-      status.textContent = 'An error occurred while sending to the server / uploading to Dropbox. (Please contact the administrator.)';
-      status.className = 'status error';
-    } else {
-      alert('送信/アップロードに失敗しました。管理者に連絡してください。');
-    }
-  }
-}
 
 
   function clearScores() {
