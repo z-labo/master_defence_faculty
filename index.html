@@ -195,6 +195,19 @@
 
   const STORAGE_KEY = 'thesis_scoring_numeric_0to5_v1';
 
+  const EVALUATOR_KEY = 'thesis_scoring_evaluator_v1'; 
+  
+  function loadEvaluator() {
+    try { return localStorage.getItem(EVALUATOR_KEY) || ''; }
+    catch { return ''; }
+  }
+
+  function saveEvaluator(name) {
+    try { localStorage.setItem(EVALUATOR_KEY, String(name || '').trim()); }
+    catch {}
+  }
+
+
   function loadScores() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -380,7 +393,7 @@
     URL.revokeObjectURL(url);
   }
 
-  async function submitToDropbox() { 
+  async function submitToDropbox() {   
     const evaluatorEl = document.getElementById('evaluatorName'); // 평가자 입력칸 id
     let evaluator = evaluatorEl ? evaluatorEl.value.trim() : ''; 
     
@@ -388,7 +401,11 @@
       evaluator = prompt('評価者氏名を入力してください（姓と名の間にスペースは入れないでください）', '') || '';
       evaluator = evaluator.trim(); 
       if (evaluatorEl) evaluatorEl.value = evaluator; // 입력칸에 반영
+      saveEvaluator(evaluator); 
     }
+
+
+
 
     if (!evaluator || !String(evaluator).trim()) {
       alert('評価者氏名が未入力のため、提出できません。');
@@ -482,7 +499,17 @@
   document.getElementById('btnExport').addEventListener('click', exportCSV);
   document.getElementById('btnClear').addEventListener('click', clearScores);
   document.getElementById('btnSubmit').addEventListener('click', submitToDropbox);
+  
+  const evaluatorEl = document.getElementById('evaluatorName'); 
+  if (evaluatorEl) { 
+    // 1) 페이지 로드 시 자동 복원
+    evaluatorEl.value = loadEvaluator();
 
+    // 2) 입력할 때마다 자동 저장
+    evaluatorEl.addEventListener('input', () => {
+      saveEvaluator(evaluatorEl.value);
+    });
+  }
   render();
 </script>
 </body>
