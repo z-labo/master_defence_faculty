@@ -1,208 +1,98 @@
+# app.py
 import os
 import json
-from datetime import datetime, timezone, timedelta
-JST = timezone(timedelta(hours=9))
-
-# collection
-from collections import defaultdict
-
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import dropbox
 
-from flask_cors import CORS  # ★ 추가
-
-app = Flask(__name__)
-
-# ★ CORS 설정: GitHub Pages 도메인만 허용 (테스트용으로는 "*" 도 가능)
-CORS(app, resources={r"/*": {"origins": "https://z-labo.github.io"}})
-
-
-# 환경변수에서 Dropbox 토큰 읽기
-DROPBOX_TOKEN = os.environ.get("DROPBOX_TOKEN")
-DROPBOX_BASE_FOLDER = "/Scoring"  # Dropbox 안의 저장 폴더 (미리 하나 만들어 두는 것을 권장)
+# -----------------------------
+# Config
+# -----------------------------
+DROPBOX_TOKEN = os.environ.get("DROPBOX_TOKEN")  # Render의 Environment에 설정
+DROPBOX_BASE_FOLDER = os.environ.get("DROPBOX_BASE_FOLDER", "/Scoring")  # 기본값
+ALLOWED_ORIGINS = os.environ.get(
+    "ALLOWED_ORIGINS",
+    "https://z-labo.github.io"  # GitHub Pages 도메인
+).split(",")
 
 if not DROPBOX_TOKEN:
-  raise RuntimeError("환경변수 DROPBOX_TOKEN 이 설정되어 있지 않습니다.")
+    raise RuntimeError("환경변수 DROPBOX_TOKEN 이 설정되어 있지 않습니다.")
 
-# Dropbox 클라이언트 (필요할 때마다 새로 만들어도 되고, 전역으로 써도 됨)
-def get_dbx():
-  return dropbox.Dropbox(DROPBOX_TOKEN)
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": [o.strip() for o in ALLOWED_ORIGINS]}})
 
-def load_all_votes_from_dropbox():
-  """
-  /vote_results 폴더 아래의 모든 *.json 파일을 읽어서
-  JSON 객체 리스트로 반환.
-  """
-  dbx = get_dbx()
-  records = []
+def get_dbx() -> dropbox.Dropbox:
+    return dropbox.Dropbox(DROPBOX_TOKEN)
 
-  # 폴더 목록 가져오기
-  res = dbx.files_list_folder(DROPBOX_BASE_FOLDER)
-  entries = list(res.entries)
-  while res.has_more:
-    res = dbx.files_list_folder_continue(res.cursor)
-    entries.extend(res.entries)
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-  for e in entries:
-    # 파일만 대상으로, 확장자가 .json 인 것만
-    if isinstance(e, dropbox.files.FileMetadata) and e.name.lower().endswith(".json"):
-      try:
-        meta, resp = dbx.files_download(e.path_lower)
-        content = resp.content.decode("utf-8")
-        data = json.loads(content)
-        records.append(data)
-      except Exception as ex:
-        print("JSON parse error:", e.path_lower, repr(ex))
-        continue
+def validate_payload(payload: dict) -> tuple[bool, str]:
+    # 최소 검증 (서버가 깨지지 않게)
+    if not isinstance(payload, dict):
+        return False, "payload must be a JSON object"
+    if "judgeId" not in payload or not isinstance(payload["judgeId"], str) or not payload["judgeId"].strip():
+        return False, "judgeId is required"
+    if "results" not in payload or not isinstance(payload["results"], list) or len(payload["results"]) == 0:
+        return False, "results must be a non-empty list"
 
-  return records
+    for r in payload["results"]:
+        if not isinstance(r, dict):
+            return False, "each result must be an object"
+        if "participantId" not in r or not isinstance(r["participantId"], str) or not r["participantId"].strip():
+            return False, "participantId is required"
+        if "score" not in r:
+            return False, "score is required"
+        score = r["score"]
+        if not isinstance(score, int) or score < 0 or score > 5:
+            return False, "score must be an integer 0..5"
+        # comment는 선택
+        if "comment" in r and r["comment"] is not None and not isinstance(r["comment"], str):
+            return False, "comment must be a string"
 
-def aggregate_votes(records):
-  """
-  records: load_all_votes_from_dropbox()가 반환한 JSON 객체 리스트
-  return: 집계 결과 딕셔너리
-  """
-  # (judgeId, participantId) → (timestamp(str), score, comment)
-  latest = {}
+    return True, ""
 
-  for rec in records:
-    judge_id = rec.get("judgeId")
-    ts = rec.get("timestamp") or ""
-    results = rec.get("results") or []
+@app.get("/health")
+def health():
+    return jsonify({"ok": True, "time": utc_now_iso()})
 
-    if not judge_id:
-      continue
-
-    # timestamp 비교는 ISO8601 문자열 기준으로도 시간 순서가 맞는다고 가정
-    for entry in results:
-      pid = entry.get("participantId")
-      score = entry.get("score")
-      comment = entry.get("comment") or ""
-
-      if not pid:
-        continue
-
-      key = (judge_id, pid)
-      prev = latest.get(key)
-      if (prev is None) or (ts > prev[0]):
-        latest[key] = (ts, score, comment)
-
-  # 참가자별 집계
-  participants = {}
-  for (judge_id, pid), (ts, score, comment) in latest.items():
-    if score is None:
-      continue
-    try:
-      s = float(score)
-    except Exception:
-      continue
-
-    p = participants.setdefault(pid, {
-      "participantId": pid,
-      "totalScore": 0.0,
-      "voteCount": 0,
-      "details": []  # 각 심사위원별 상세
-    })
-    p["totalScore"] += s
-    p["voteCount"] += 1
-    p["details"].append({
-      "judgeId": judge_id,
-      "score": s,
-      "comment": comment,
-      "timestamp": ts
-    })
-
-  # 평균 및 정렬
-  result_list = []
-  for pid, info in participants.items():
-    cnt = info["voteCount"]
-    avg = info["totalScore"] / cnt if cnt > 0 else 0.0
-    info["avgScore"] = round(avg, 3)
-    result_list.append(info)
-
-  # 평균 점수 내림차순, 동률이면 voteCount 많은 순
-  result_list.sort(key=lambda x: (-x["avgScore"], -x["voteCount"], x["participantId"]))
-
-  return {
-    "ok": True,
-    "lastUpdated": datetime.now(timezone.utc).isoformat(),
-    "participants": result_list
-  }
-
-
-@app.route("/submit_vote", methods=["POST", "OPTIONS"]) 
+@app.post("/submit_vote")
 def submit_vote():
-  # 0) 브라우저 preflight(OPTIONS) 요청 처리
-  if request.method == "OPTIONS":
-    # flask-cors가 헤더는 달아주므로, 상태코드만 204로 리턴
-    return ("", 204)
-  
-  # 1) JSON 받아오기
-  try:
-    data = request.get_json(force=True)
-  except Exception:
-    return jsonify({"ok": False, "error": "invalid_json"}), 400
+    payload = request.get_json(silent=True)
 
-  # 2) 최소한의 검증
-  judge_id = data.get("judgeId")
-  results = data.get("results")
+    ok, msg = validate_payload(payload)
+    if not ok:
+        return jsonify({"error": msg}), 400
 
-  if not judge_id or not isinstance(results, list):
-    return jsonify({"ok": False, "error": "bad_payload"}), 400
+    judge_id = payload["judgeId"].strip()
 
-  # 3) 파일 이름/경로 만들기
+    # 저장 파일명: judgeId별로 덮어쓰기(HTML의 "final vote만" 정책과 일치)
+    # 예: /Scoring/vote_results/J1.json
+    folder = f"{DROPBOX_BASE_FOLDER.rstrip('/')}/vote_results"
+    dropbox_path = f"{folder}/{judge_id}.json"
 
-  now_jst = datetime.now(JST)
-  date_str = now_jst.strftime("%Y%m%d")  # 예: "20251117"
+    # 서버에서 저장 시각을 별도로 찍어두면 추후 감사/디버깅에 유리
+    payload_server = dict(payload)
+    payload_server["serverReceivedAt"] = utc_now_iso()
 
-  '''
-  #    예: J1_2025-11-17T09-00-00Z.json
-  ts = data.get("timestamp")
-  if ts is None:
-    ts = datetime.now(timezone.utc).isoformat()
+    data_bytes = json.dumps(payload_server, ensure_ascii=False, indent=2).encode("utf-8")
 
-  safe_ts = ts.replace(":", "-")  # Windows/Dropbox 경로에 안전하게
-  filename = f"{judge_id}_{safe_ts}.json"
-  '''
-  filename = f"{judge_id}_{date_str}.json"
-  dropbox_path = f"{DROPBOX_BASE_FOLDER}/{filename}"
+    try:
+        dbx = get_dbx()
+        dbx.files_upload(
+            data_bytes,
+            dropbox_path,
+            mode=dropbox.files.WriteMode.overwrite,
+            mute=True
+        )
+    except Exception as e:
+        # Render 로그에 에러가 남도록 문자열 포함
+        return jsonify({"error": "dropbox upload failed", "detail": str(e)}), 500
 
-  # 4) Dropbox에 업로드
-  dbx = get_dbx()
-  try:
-    # JSON 문자열로 인코딩 (UTF-8)
-    content = json.dumps(data, ensure_ascii=False, indent=2)
-    dbx.files_upload(
-      content.encode("utf-8"),
-      dropbox_path,
-      mode=dropbox.files.WriteMode.overwrite  # 같은 이름 있으면 에러, 덮어쓰려면 .overwrite
-    )
-  except Exception as e:
-    # 로그용으로 출력(호스팅 서비스의 로그에서 확인)
-    print("Dropbox upload error:", repr(e))
-    return jsonify({"ok": False, "error": "dropbox_upload_failed"}), 500
+    return jsonify({"ok": True, "path": dropbox_path})
 
-  # 5) 클라이언트에 성공 응답
-  return jsonify({"ok": True, "path": dropbox_path})
-
-@app.after_request
-def add_cors_headers(response):
-    # GitHub Pages 도메인만 허용 (테스트용이면 "*" 도 가능)
-    response.headers["Access-Control-Allow-Origin"] = "https://z-labo.github.io"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    return response
-
-@app.route("/api/results", methods=["GET"])
-def api_results():
-  try:
-    records = load_all_votes_from_dropbox()
-    agg = aggregate_votes(records)
-    return jsonify(agg)
-  except Exception as e:
-    print("Aggregate error:", repr(e))
-    return jsonify({
-      "ok": False,
-      "error": "aggregate_failed",
-      "detail": repr(e)     # ★ 디버깅용 상세 메시지
-    }), 500
+if __name__ == "__main__":
+    # 로컬 테스트용
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port, debug=True)
