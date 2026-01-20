@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>オンライン審査 集計結果</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f7;
+      color: #222;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 24px auto 40px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+      padding: 20px 24px 28px;
+    }
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      font-size: 0.9rem;
+      color: #555;
+      margin-bottom: 1rem;
+    }
+    .info-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #555;
+      margin-bottom: 12px;
+    }
+    .btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: none;
+      background: #325dff;
+      color: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+    tr:nth-child(even) td {
+      background: #fafafa;
+    }
+    .small {
+      font-size: 0.8rem;
+      color: #777;
+    }
+    .status {
+      font-size: 0.8rem;
+      color: #555;
+    }
+    .status.error {
+      color: #c53030;
+    }
+    .status.ok {
+      color: #047857;
+    }
+    .details {
+      margin-top: 16px;
+      font-size: 0.85rem;
+    }
+    .details pre {
+      white-space: pre-wrap;
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 8px;
+      font-family: "JetBrains Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
+    }
+    @media (max-width: 640px) {
+      th, td { font-size: 0.8rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>オンライン審査 集計結果</h1>
+  <div class="subtitle">
+    Dropbox フォルダ <code>/vote_results</code> に保存された JSON を元に、参加者ごとの平均点・票数をリアルタイムで集計表示します。
+  </div>
+
+  <div class="info-bar">
+    <div>
+      <span id="last-updated">最終更新: -</span>
+      <span id="record-count" style="margin-left:8px;">(参加者数: -)</span>
+    </div>
+    <div>
+      <button class="btn" id="refresh-btn">再読み込み</button>
+      <span class="small" style="margin-left:6px;">※ 必要に応じて手動で更新してください。</span>
+    </div>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <table id="result-table">
+    <thead>
+      <tr>
+        <th style="width: 8%;">順位</th>
+        <th style="width: 15%;">参加者ID</th>
+        <th style="width: 15%;">平均点</th>
+        <th style="width: 15%;">票数</th>
+        <th style="width: 15%;">合計点</th>
+        <th>詳細</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- JSで埋め込み -->
+    </tbody>
+  </table>
+
+  <div class="details">
+    <div class="small">
+      ※ 「詳細」列には、各参加者に対してどの審査委員が何点を付けたか（コメント含む）を簡易的に表示します。  
+      より詳細な分析が必要な場合は、元の JSON ファイルをダウンロードしてスクリプト等で処理してください。
+    </div>
+  </div>
+</div>
+
+<script>
+  // 결과 API 엔드포인트 (Flask 백엔드)
+  const API_URL = "https://vote-nit6.onrender.com/api/results";
+
+  const lastUpdatedSpan = document.getElementById('last-updated');
+  const recordCountSpan = document.getElementById('record-count');
+  const statusDiv = document.getElementById('status');
+  const tableBody = document.querySelector('#result-table tbody');
+  const refreshBtn = document.getElementById('refresh-btn');
+
+  async function fetchResults() {
+    statusDiv.textContent = "サーバーから集計データを取得中です...";
+    statusDiv.className = "status";
+    refreshBtn.disabled = true;
+
+    try {
+      const res = await fetch(API_URL);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error("HTTP " + res.status + " " + text);
+      }
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error("API error: " + (data.error || "unknown"));
+      }
+      renderResults(data);
+      statusDiv.textContent = "更新完了";
+      statusDiv.className = "status ok";
+    } catch (err) {
+      console.error(err);
+      statusDiv.textContent = "集計データの取得中にエラーが発生しました。 (" + err.message + ")";
+      statusDiv.className = "status error";
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  function renderResults(data) {
+    const participants = data.participants || [];
+    const lastUpdated = data.lastUpdated || "-";
+
+    lastUpdatedSpan.textContent = "最終更新: " + lastUpdated;
+    recordCountSpan.textContent = "(参加者数: " + participants.length + ")";
+
+    tableBody.innerHTML = "";
+
+    participants.forEach((p, idx) => {
+      const tr = document.createElement('tr');
+
+      const rankTd = document.createElement('td');
+      rankTd.textContent = idx + 1;
+      tr.appendChild(rankTd);
+
+      const idTd = document.createElement('td');
+      idTd.textContent = p.participantId;
+      tr.appendChild(idTd);
+
+      const avgTd = document.createElement('td');
+      avgTd.textContent = p.avgScore.toFixed(3);
+      tr.appendChild(avgTd);
+
+      const cntTd = document.createElement('td');
+      cntTd.textContent = p.voteCount;
+      tr.appendChild(cntTd);
+
+      const totalTd = document.createElement('td');
+      totalTd.textContent = p.totalScore.toFixed(3);
+      tr.appendChild(totalTd);
+
+      const detailTd = document.createElement('td');
+      const details = p.details || [];
+      if (details.length === 0) {
+        detailTd.textContent = "-";
+      } else {
+        const lines = details.map(d => {
+          const j = d.judgeId || "-";
+          const s = (d.score != null) ? d.score.toString() : "-";
+          const c = d.comment ? d.comment : "";
+          return `${j}: ${s}点 ${c}`;
+        });
+        detailTd.textContent = lines.join(" / ");
+      }
+      tr.appendChild(detailTd);
+
+      tableBody.appendChild(tr);
+    });
+  }
+
+  // 初回ロード
+  fetchResults();
+
+  // 手動更新ボタン
+  refreshBtn.addEventListener('click', fetchResults);
+
+  // 필요하면 자동 갱신도 가능
+  // setInterval(fetchResults, 30000);
+</script>
+</body>
+</html>
