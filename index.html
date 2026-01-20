@@ -330,17 +330,18 @@
 
         input.addEventListener('input', () => {
           const v = clampInt0to5(input.value);
-          const s = loadScores();
-          if (v === null) {
-            // out-of-range: do not save, but keep user's typing; optional border could be applied
-            input.style.borderColor = '#5b2b2b';
-            return;
+          if (v === null) { 
+            input.style.borderColor = '#5b2b2b';  
+            return; 
           }
+  
+  
           input.style.borderColor = '';
-          s[k] = v;
-          saveScores(s);
-          updateStats(s);
+          scores[k] = v; 
+          saveScores(scores); 
+          updateStats(scores);
         });
+
 
         right.appendChild(lab);
         right.appendChild(input);
@@ -488,7 +489,7 @@
 
 
   function clearScores() {
-    localStorage.removeItem(STORAGE_KEY);
+    saveScores({});
     render();
   }
 
