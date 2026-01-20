@@ -92,6 +92,16 @@ def submit_vote():
 
     return jsonify({"ok": True, "path": dropbox_path})
 
+@app.route("/", methods=["GET", "POST", "OPTIONS"])
+def root():
+    if request.method == "OPTIONS":
+        return ("", 204)  # preflight 통과
+    if request.method == "GET":
+        return "OK", 200  # 헬스체크용
+    # POST로 들어오면 기존 submit_vote 로직을 호출하거나,
+    # 아니면 명확히 404/400을 주되 CORS 헤더는 after_request로 붙게 두기
+    return jsonify({"ok": False, "error": "POST / is not supported. Use /submit_vote"}), 400
+
 if __name__ == "__main__":
     # 로컬 테스트용
     port = int(os.environ.get("PORT", "5000"))
