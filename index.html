@@ -418,6 +418,7 @@
         const k = keyFor(item);
         const score = (typeof scores[k] === 'number') ? scores[k] : null;
         entries.push({
+          participantId: String(item.no),
           date,
           time: item.time,
           no: item.no,
