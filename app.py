@@ -159,6 +159,7 @@ def aggregate_votes(records):
       pid = entry.get("participantId")
       score = entry.get("score")
       comment = entry.get("comment") or ""
+      pname = entry.get("presenter")
 
       if not pid:
         continue
@@ -170,6 +171,8 @@ def aggregate_votes(records):
 
   # 참가자별 집계
   participants = {}
+  pid_to_name = {}
+
   for (judge_id, pid), (ts, score, comment) in latest.items():
     if score is None:
       continue
@@ -178,8 +181,17 @@ def aggregate_votes(records):
     except Exception:
       continue
 
+    # 이름 누적(비어있지 않은 것만)
+    if isinstance(pname, str):
+      pname = pname.strip()
+    else:
+      pname = ""
+    if pname:
+      pid_to_name[pid] = pname
+
     p = participants.setdefault(pid, {
       "participantId": pid,
+      "participantName": "",
       "totalScore": 0.0,
       "voteCount": 0,
       "details": []  # 각 심사위원별 상세
@@ -199,10 +211,19 @@ def aggregate_votes(records):
     cnt = info["voteCount"]
     avg = info["totalScore"] / cnt if cnt > 0 else 0.0
     info["avgScore"] = round(avg, 3)
+
+    info["participantName"] = pid_to_name.get(pid, "")  # 프론트에서 fallback 처리 권장
+
     result_list.append(info)
 
   # 평균 점수 내림차순, 동률이면 voteCount 많은 순
   result_list.sort(key=lambda x: (-x["avgScore"], -x["voteCount"], x["participantId"]))
+  presenter_list = []
+  for pid in sorted(participants.keys()):
+    presenter_list.append({
+      "participantId": pid,
+      "participantName": pid_to_name.get(pid, "")
+    })
 
   # 심사위원별 집계 (추가)
   judges = {}
@@ -244,6 +265,7 @@ def aggregate_votes(records):
     "ok": True,
     "lastUpdated": datetime.now(timezone.utc).isoformat(),
     "participants": result_list,
+    "participantsName": presenter_list,
     "judges": judge_id_list
   }
 

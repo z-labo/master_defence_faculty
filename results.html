@@ -206,7 +206,7 @@
       tr.appendChild(rankTd);
 
       const idTd = document.createElement('td');
-      idTd.textContent = p.participantId;
+      idTd.textContent = (p.participantName && p.participantName.trim()) ? p.participantName : p.participantId;
       tr.appendChild(idTd);
 
       const avgTd = document.createElement('td');
