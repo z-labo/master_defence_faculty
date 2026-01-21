@@ -78,7 +78,8 @@ def submit_vote():
 
     # 저장 파일명: evaluatorName별로 덮어쓰기(HTML의 "final vote만" 정책과 일치)
     # 예: /vote_results/evaluatorName.json
-    folder = f"{DROPBOX_BASE_FOLDER.rstrip('/')}/vote_results"
+    base = (DROPBOX_BASE_FOLDER or "").rstrip("/")
+    folder = f"{base}/vote_results" if base else "/vote_results"
     dropbox_path = f"{folder}/{evaluator_name}.json"
 
     # 서버에서 저장 시각을 별도로 찍어두면 추후 감사/디버깅에 유리
