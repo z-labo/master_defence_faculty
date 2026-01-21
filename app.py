@@ -92,7 +92,7 @@ def submit_vote():
 
     return jsonify({"ok": True, "path": dropbox_path})
 
-'''
+
 @app.route("/", methods=["GET", "POST", "OPTIONS"])
 def root():
     if request.method == "OPTIONS":
@@ -102,7 +102,108 @@ def root():
     # POST로 들어오면 기존 submit_vote 로직을 호출하거나,
     # 아니면 명확히 404/400을 주되 CORS 헤더는 after_request로 붙게 두기
     return jsonify({"ok": False, "error": "POST / is not supported. Use /submit_vote"}), 400
-'''
+
+def load_all_votes_from_dropbox():
+  """
+  /vote_results 폴더 아래의 모든 *.json 파일을 읽어서
+  JSON 객체 리스트로 반환.
+  """
+  dbx = get_dbx()
+  records = []
+
+  # 폴더 목록 가져오기
+  folder = f"{DROPBOX_BASE_FOLDER.rstrip('/')}/vote_results"
+  res = dbx.files_list_folder(folder)
+  entries = list(res.entries)
+  while res.has_more:
+    res = dbx.files_list_folder_continue(res.cursor)
+    entries.extend(res.entries)
+
+  for e in entries:
+    # 파일만 대상으로, 확장자가 .json 인 것만
+    if isinstance(e, dropbox.files.FileMetadata) and e.name.lower().endswith(".json"):
+      try:
+        meta, resp = dbx.files_download(e.path_lower)
+        content = resp.content.decode("utf-8")
+        data = json.loads(content)
+        records.append(data)
+      except Exception as ex:
+        print("JSON parse error:", e.path_lower, repr(ex))
+        continue
+
+  return records
+
+def aggregate_votes(records):
+  """
+  records: load_all_votes_from_dropbox()가 반환한 JSON 객체 리스트
+  return: 집계 결과 딕셔너리
+  """
+  # (judgeId, participantId) → (timestamp(str), score, comment)
+  latest = {}
+
+  for rec in records:
+    judge_id = rec.get("judgeId")
+    ts = rec.get("serverReceivedAt") or rec.get("timestamp") or ""
+    results = rec.get("results") or []
+
+    if not judge_id:
+      continue
+
+    # timestamp 비교는 ISO8601 문자열 기준으로도 시간 순서가 맞는다고 가정
+    for entry in results:
+      pid = entry.get("participantId")
+      score = entry.get("score")
+      comment = entry.get("comment") or ""
+
+      if not pid:
+        continue
+
+      key = (judge_id, pid)
+      prev = latest.get(key)
+      if (prev is None) or (ts > prev[0]):
+        latest[key] = (ts, score, comment)
+
+  # 참가자별 집계
+  participants = {}
+  for (judge_id, pid), (ts, score, comment) in latest.items():
+    if score is None:
+      continue
+    try:
+      s = float(score)
+    except Exception:
+      continue
+
+    p = participants.setdefault(pid, {
+      "participantId": pid,
+      "totalScore": 0.0,
+      "voteCount": 0,
+      "details": []  # 각 심사위원별 상세
+    })
+    p["totalScore"] += s
+    p["voteCount"] += 1
+    p["details"].append({
+      "judgeId": judge_id,
+      "score": s,
+      "comment": comment,
+      "timestamp": ts
+    })
+
+  # 평균 및 정렬
+  result_list = []
+  for pid, info in participants.items():
+    cnt = info["voteCount"]
+    avg = info["totalScore"] / cnt if cnt > 0 else 0.0
+    info["avgScore"] = round(avg, 3)
+    result_list.append(info)
+
+  # 평균 점수 내림차순, 동률이면 voteCount 많은 순
+  result_list.sort(key=lambda x: (-x["avgScore"], -x["voteCount"], x["participantId"]))
+
+  return {
+    "ok": True,
+    "lastUpdated": datetime.now(timezone.utc).isoformat(),
+    "participants": result_list
+  }
 
 @app.route("/api/results", methods=["GET"])
 def api_results():
@@ -117,7 +218,7 @@ def api_results():
       "error": "aggregate_failed",
       "detail": repr(e)     # ★ 디버깅용 상세 메시지
     }), 500
-  
+
 if __name__ == "__main__":
     # 로컬 테스트용
     port = int(os.environ.get("PORT", "5000"))
