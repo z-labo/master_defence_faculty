@@ -189,12 +189,12 @@
   function renderResults(data) {
     const participants = data.participants || [];
     const lastUpdated = data.lastUpdated || "-";
-    const judgeIDset = data.judgeIdset || [];
+    const judgeIDset = data.judges || [];
 
 
     lastUpdatedSpan.textContent = "最終更新: " + lastUpdated;
     recordCountSpan.textContent = "(発表者数: " + participants.length + ")";
-    judgeCountSpan.textCountent = "(評価者数: " + len(judgeIdset) + ")";
+    judgeCountSpan.textCountent = "(評価者数: " + judges.length + ")";
 
     tableBody.innerHTML = "";
 

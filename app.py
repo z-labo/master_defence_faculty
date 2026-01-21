@@ -139,7 +139,6 @@ def aggregate_votes(records):
   return: 집계 결과 딕셔너리
   """
   # (judgeId, participantId) → (timestamp(str), score, comment)
-  judge_ids_set = set()
   latest = {}
 
   for rec in records:
@@ -154,8 +153,6 @@ def aggregate_votes(records):
   
     if not judge_id:
       continue
-
-    judge_ids_set.add(judge_id)
 
     # timestamp 비교는 ISO8601 문자열 기준으로도 시간 순서가 맞는다고 가정
     for entry in results:
@@ -207,11 +204,47 @@ def aggregate_votes(records):
   # 평균 점수 내림차순, 동률이면 voteCount 많은 순
   result_list.sort(key=lambda x: (-x["avgScore"], -x["voteCount"], x["participantId"]))
 
+  # 심사위원별 집계 (추가)
+  judges = {}
+  for (judge_id, pid), (ts, score, comment) in latest.items():
+    if score is None:
+      continue
+    try:
+      s = float(score)
+    except Exception:
+      continue
+
+    j = judges.setdefault(judge_id, {
+      "judgeId": judge_id,
+      "totalScore": 0.0,
+      "voteCount": 0,
+      "details": []  # 각 참가자에 준 점수 상세
+    })
+    j["totalScore"] += s
+    j["voteCount"] += 1
+    j["details"].append({
+      "participantId": pid,
+      "score": s,
+      "comment": comment,
+      "timestamp": ts
+    })
+
+  judge_id_list = []
+  for judge_id, info in judges.items():
+    cnt = info["voteCount"]
+    avg = info["totalScore"] / cnt if cnt > 0 else 0.0
+    info["avgScore"] = round(avg, 3)
+    judge_id_list.append(info)
+
+  # 정렬은 필요에 따라: judgeId 오름차순(문자열) 또는 투표수/평균 등
+  judge_id_list.sort(key=lambda x: (x["judgeId"]))
+
+
   return {
     "ok": True,
     "lastUpdated": datetime.now(timezone.utc).isoformat(),
     "participants": result_list,
-    "judgeIdset": judge_ids_set
+    "judges": judge_id_list
   }
 
 @app.route("/api/results", methods=["GET"])
