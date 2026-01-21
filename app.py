@@ -209,7 +209,7 @@ def aggregate_votes(records):
         info["avgScore"] = round(avg, 3)
         result_list.append(info)
 
-    result_list.sort(key=lambda x: (-x["avgScore"], -x["voteCount"], x["participantId"]))
+    result_list.sort(key=lambda x: (-x["avgScore"], -x["voteCount"], x["presenterId"]))
 
     return {
         "ok": True,
