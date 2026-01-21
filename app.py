@@ -175,79 +175,39 @@ def aggregate_votes(records):
 
     p = participants.setdefault(pid, {
       "participantId": pid,
-      "participantName": "",
+      "participantName": pname,
       "totalScore": 0.0,
       "voteCount": 0,
       "details": []
     })
 
-
-    if pname: 
+    if pname:
       p["participantName"] = pname
   
-      p["totalScore"] += s
-      p["voteCount"] += 1
-      p["details"].append({
-        "judgeId": judge_id,
-        "score": s,
-        "comment": comment,
-        "timestamp": ts
-    })
-
-  result_list = []
-  
-  for pid, info in participants.items():
-    cnt = info["voteCount"]
-    avg = info["totalScore"] / cnt if cnt > 0 else 0.0
-    info["avgScore"] = round(avg, 3)
-    info["participantName"] = pid_to_name.get(pid, "")
-    result_list.append(info)
-
-  result_list.sort(key=lambda x: (-x["avgScore"], -x["voteCount"], x["participantId"]))
-
-  presenter_list = [{"participantId": pid, "participantName": pid_to_name.get(pid, "")}
-                    for pid in sorted(participants.keys())]
-
-  # 심사위원별 집계
-  judges = {}
-  for (judge_id, pid), (ts, score, comment, pname) in latest.items():
-    if score is None:
-      continue
-    try:
-      s = float(score)
-    except Exception:
-      continue
-
-    j = judges.setdefault(judge_id, {
+    p["totalScore"] += s
+    p["voteCount"] += 1
+    p["details"].append({
       "judgeId": judge_id,
-      "totalScore": 0.0,
-      "voteCount": 0,
-      "details": []
-    })
-    j["totalScore"] += s
-    j["voteCount"] += 1
-    j["details"].append({
-      "participantId": pid,
       "score": s,
       "comment": comment,
       "timestamp": ts
     })
 
-  judge_id_list = []
-  for judge_id, info in judges.items():
+  result_list = []
+
+  for pid, info in participants.items():
     cnt = info["voteCount"]
     avg = info["totalScore"] / cnt if cnt > 0 else 0.0
     info["avgScore"] = round(avg, 3)
-    judge_id_list.append(info)
+    result_list.append(info)
 
-  judge_id_list.sort(key=lambda x: x["judgeId"])
+  result_list.sort(key=lambda x: (-x["avgScore"], -x["voteCount"], x["participantId"]))
 
   return {
     "ok": True,
     "lastUpdated": datetime.now(timezone.utc).isoformat(),
     "participants": result_list,
-    "participantName": presenter_list,  
-    "judges": judge_id_list
+    "totalJudges": len(all_judges)
   }
 
 

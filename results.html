@@ -202,11 +202,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const participants = Array.isArray(data.participants) ? data.participants : [];
     const lastUpdated = data.lastUpdated || "-";
-    const judges = Array.isArray(data.judges) ? data.judges : [];
+    const totalJudges = data.totalJudges || 0;
 
     lastUpdatedSpan.textContent = "最終更新: " + lastUpdated;
-    recordCountSpan.textContent = "(発表者数: " + participants.length + ")";
-    judgeCountSpan.textContent = "(評価者数: " + judges.length + ")";
+    recordCountSpan.textContent = "(参加者数: " + participants.length + 
+                                 " / 審査委員数: " + totalJudges + ")";
 
     tableBody.innerHTML = "";
 
@@ -230,7 +230,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tr.appendChild(avgTd);
 
       const cntTd = document.createElement('td');
-      cntTd.textContent = String(p.voteCount ?? 0);
+      cntTd.textContent = p.voteCount + " / " + totalJudges; 
       tr.appendChild(cntTd);
 
       const totalTd = document.createElement('td');
