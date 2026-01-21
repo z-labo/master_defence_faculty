@@ -197,12 +197,17 @@
   function renderResults(data) {
     const participants = data.participants || [];
     const lastUpdated = data.lastUpdated || "-";
-    const judges = data.judges || [];
+
+    const judges = Array.isArray(data.judges) ? data.judges : [];
+    document.querySelector("#judgeCount").textContent = String(judges.length);
 
 
     lastUpdatedSpan.textContent = "最終更新: " + lastUpdated;
     recordCountSpan.textContent = "(発表者数: " + participants.length + ")";
-    judgeCountSpan.textCountent = "(評価者数: " + judges.length + ")";
+    judgeCountSpan.textContent = "(評価者数: " + judges.length + ")";
+
+    console.log("keys:", Object.keys(data));
+    console.log("judges type:", typeof data.judges, "isArray:", Array.isArray(data.judges), "len:", data.judges?.length);
 
     tableBody.innerHTML = "";
 
@@ -250,6 +255,8 @@
 
   // 初回ロード
   fetchResults();
+  
+    
 
   // 手動更新ボタン
   refreshBtn.addEventListener('click', fetchResults);
