@@ -112,7 +112,9 @@
   <div class="info-bar">
     <div>
       <span id="last-updated">最終更新: -</span>
-      <span id="record-count" style="margin-left:8px;">(参加者数: -)</span>
+      <span id="record-count" style="margin-left:8px;">(発表者数: -)</span>
+      <span id="judge-count" style="margin-left:8px;">(評価者数: -)</span>
+
     </div>
     <div>
       <button class="btn" id="refresh-btn">再読み込み</button>
@@ -126,7 +128,7 @@
     <thead>
       <tr>
         <th style="width: 8%;">順位</th>
-        <th style="width: 15%;">参加者ID</th>
+        <th style="width: 15%;">発表者ID</th>
         <th style="width: 15%;">平均点</th>
         <th style="width: 15%;">票数</th>
         <th style="width: 15%;">合計点</th>
@@ -152,6 +154,7 @@
 
   const lastUpdatedSpan = document.getElementById('last-updated');
   const recordCountSpan = document.getElementById('record-count');
+  const judgeCountSpan = document.getElementById('judge-count');
   const statusDiv = document.getElementById('status');
   const tableBody = document.querySelector('#result-table tbody');
   const refreshBtn = document.getElementById('refresh-btn');
@@ -186,9 +189,12 @@
   function renderResults(data) {
     const participants = data.participants || [];
     const lastUpdated = data.lastUpdated || "-";
+    const judgeIDset = data.judgeIdset || [];
+
 
     lastUpdatedSpan.textContent = "最終更新: " + lastUpdated;
-    recordCountSpan.textContent = "(参加者数: " + participants.length + ")";
+    recordCountSpan.textContent = "(発表者数: " + participants.length + ")";
+    judgeCountSpan.textCountent = "(評価者数: " + len(judgeIdset) + ")";
 
     tableBody.innerHTML = "";
 

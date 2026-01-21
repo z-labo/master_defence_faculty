@@ -139,6 +139,7 @@ def aggregate_votes(records):
   return: 집계 결과 딕셔너리
   """
   # (judgeId, participantId) → (timestamp(str), score, comment)
+  judge_ids_set = set()
   latest = {}
 
   for rec in records:
@@ -148,6 +149,13 @@ def aggregate_votes(records):
 
     if not judge_id:
       continue
+
+    judge_id = str(judge_id).strip() 
+  
+    if not judge_id:
+      continue
+
+    judge_ids_set.add(judge_id)
 
     # timestamp 비교는 ISO8601 문자열 기준으로도 시간 순서가 맞는다고 가정
     for entry in results:
@@ -202,7 +210,8 @@ def aggregate_votes(records):
   return {
     "ok": True,
     "lastUpdated": datetime.now(timezone.utc).isoformat(),
-    "participants": result_list
+    "participants": result_list,
+    "judgeIdset": judge_ids_set
   }
 
 @app.route("/api/results", methods=["GET"])
