@@ -157,23 +157,26 @@
 </div>
 
 <script>
-  // 결과 API 엔드포인트 (Flask 백엔드)
+document.addEventListener("DOMContentLoaded", () => {
   const API_URL = "https://master-s-thesis-presentation-session.onrender.com/api/results";
 
   const lastUpdatedSpan = document.getElementById('last-updated');
   const recordCountSpan = document.getElementById('record-count');
-  const judgeCountSpan = document.getElementById('judge-count');
+  const judgeCountSpan  = document.getElementById('judge-count');
   const statusDiv = document.getElementById('status');
   const tableBody = document.querySelector('#result-table tbody');
   const refreshBtn = document.getElementById('refresh-btn');
 
+  console.log("DOM refs:", { lastUpdatedSpan, recordCountSpan, judgeCountSpan, tableBody, refreshBtn, statusDiv });
+
   async function fetchResults() {
+    if (!statusDiv || !refreshBtn) return; // 최소 방어
     statusDiv.textContent = "サーバーから集計データを取得中です...";
     statusDiv.className = "status";
     refreshBtn.disabled = true;
 
     try {
-      const res = await fetch(API_URL);
+      const res = await fetch(API_URL, { cache: "no-store" });
       if (!res.ok) {
         const text = await res.text();
         throw new Error("HTTP " + res.status + " " + text);
@@ -195,9 +198,20 @@
   }
 
   function renderResults(data) {
-    const participants = data.participants || [];
-    const lastUpdated = data.lastUpdated || "-";
+    // ✅ null 방어: 여기서 null이면 HTML의 id가 다르거나 요소가 없음
+    if (!lastUpdatedSpan || !recordCountSpan || !judgeCountSpan || !tableBody) {
+      console.error("Missing DOM element(s). Check ids:", {
+        lastUpdatedSpan, recordCountSpan, judgeCountSpan, tableBody
+      });
+      if (statusDiv) {
+        statusDiv.textContent = "HTMLのidが一致していません（last-updated/record-count/judge-count/result-table）";
+        statusDiv.className = "status error";
+      }
+      return;
+    }
 
+    const participants = Array.isArray(data.participants) ? data.participants : [];
+    const lastUpdated = data.lastUpdated || "-";
     const judges = Array.isArray(data.judges) ? data.judges : [];
 
     lastUpdatedSpan.textContent = "最終更新: " + lastUpdated;
@@ -205,7 +219,7 @@
     judgeCountSpan.textContent = "(評価者数: " + judges.length + ")";
 
     console.log("keys:", Object.keys(data));
-    console.log("judges type:", typeof data.judges, "isArray:", Array.isArray(data.judges), "len:", data.judges?.length);
+    console.log("judges len:", judges.length);
 
     tableBody.innerHTML = "";
 
@@ -213,56 +227,36 @@
       const tr = document.createElement('tr');
 
       const rankTd = document.createElement('td');
-      rankTd.textContent = idx + 1;
+      rankTd.textContent = String(idx + 1);
       tr.appendChild(rankTd);
 
       const idTd = document.createElement('td');
-      idTd.textContent = (p.participantName && p.participantName.trim()) ? p.participantName : p.participantId;
+      idTd.textContent = (p.participantName && String(p.participantName).trim())
+        ? String(p.participantName).trim()
+        : (p.participantId ?? "-");
       tr.appendChild(idTd);
 
       const avgTd = document.createElement('td');
-      avgTd.textContent = p.avgScore.toFixed(3);
+      avgTd.textContent = Number(p.avgScore ?? 0).toFixed(3);
       tr.appendChild(avgTd);
 
       const cntTd = document.createElement('td');
-      cntTd.textContent = p.voteCount;
+      cntTd.textContent = String(p.voteCount ?? 0);
       tr.appendChild(cntTd);
 
       const totalTd = document.createElement('td');
-      totalTd.textContent = p.totalScore.toFixed(3);
+      totalTd.textContent = Number(p.totalScore ?? 0).toFixed(3);
       tr.appendChild(totalTd);
 
-      /*
-      const detailTd = document.createElement('td');
-      const details = p.details || [];
-      if (details.length === 0) {
-        detailTd.textContent = "-";
-      } else {
-        const lines = details.map(d => {
-          const j = d.judgeId || "-";
-          const s = (d.score != null) ? d.score.toString() : "-";
-          const c = d.comment ? d.comment : "";
-          return `${j}: ${s}点 ${c}`;
-        });
-        detailTd.textContent = lines.join(" / ");
-      }
-      tr.appendChild(detailTd);
-
+      // ✅ append가 주석 밖에 있어야 실제로 표에 표시됨
       tableBody.appendChild(tr);
-      */
     });
   }
 
-  // 初回ロード
   fetchResults();
-  
-    
-
-  // 手動更新ボタン
-  refreshBtn.addEventListener('click', fetchResults);
-
-  // 필요하면 자동 갱신도 가능
-  // setInterval(fetchResults, 30000);
+  if (refreshBtn) refreshBtn.addEventListener('click', fetchResults);
+});
 </script>
+
 </body>
 </html>
