@@ -134,7 +134,8 @@
     <thead>
       <tr>
         <th style="width: 8%;">順位</th>
-        <th style="width: 15%;">発表者</th>
+        <th style="width: 15%;">発表者番号</th>
+        <th style="width: 15%;">発表者名</th> 
         <th style="width: 15%;">平均点</th>
         <th style="width: 15%;">票数</th>
         <th style="width: 15%;">合計点</th>
@@ -198,17 +199,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderResults(data) {
-    // ✅ null 방어: 여기서 null이면 HTML의 id가 다르거나 요소가 없음
-    if (!lastUpdatedSpan || !recordCountSpan || !judgeCountSpan || !tableBody) {
-      console.error("Missing DOM element(s). Check ids:", {
-        lastUpdatedSpan, recordCountSpan, judgeCountSpan, tableBody
-      });
-      if (statusDiv) {
-        statusDiv.textContent = "HTMLのidが一致していません（last-updated/record-count/judge-count/result-table）";
-        statusDiv.className = "status error";
-      }
-      return;
-    }
 
     const participants = Array.isArray(data.participants) ? data.participants : [];
     const lastUpdated = data.lastUpdated || "-";
@@ -218,23 +208,22 @@ document.addEventListener("DOMContentLoaded", () => {
     recordCountSpan.textContent = "(発表者数: " + participants.length + ")";
     judgeCountSpan.textContent = "(評価者数: " + judges.length + ")";
 
-    console.log("keys:", Object.keys(data));
-    console.log("judges len:", judges.length);
-
     tableBody.innerHTML = "";
 
     participants.forEach((p, idx) => {
       const tr = document.createElement('tr');
 
       const rankTd = document.createElement('td');
-      rankTd.textContent = String(idx + 1);
+      rankTd.textContent = idx + 1;
       tr.appendChild(rankTd);
 
       const idTd = document.createElement('td');
-      idTd.textContent = (p.participantName && String(p.participantName).trim())
-        ? String(p.participantName).trim()
-        : (p.participantId ?? "-");
+      idTd.textContent = p.participantId;
       tr.appendChild(idTd);
+
+      const nameTd = document.createElement('td');
+      nameTd.textContent = p.participantName || "-";
+      tr.appendChild(nameTd);
 
       const avgTd = document.createElement('td');
       avgTd.textContent = Number(p.avgScore ?? 0).toFixed(3);
@@ -247,8 +236,24 @@ document.addEventListener("DOMContentLoaded", () => {
       const totalTd = document.createElement('td');
       totalTd.textContent = Number(p.totalScore ?? 0).toFixed(3);
       tr.appendChild(totalTd);
-
-      // ✅ append가 주석 밖에 있어야 실제로 표에 표시됨
+      
+      /*
+      const detailTd = document.createElement('td');
+      const details = p.details || [];
+      if (details.length === 0) {
+        detailTd.textContent = "-";
+      } else {
+        const lines = details.map(d => {
+          const j = d.judgeId || "-";
+          const s = (d.score != null) ? d.score.toString() : "-";
+          const c = d.comment ? d.comment : "";
+          return `${j}: ${s}点 ${c}`;
+        });
+        detailTd.textContent = lines.join(" / ");
+      }
+      tr.appendChild(detailTd);
+      */
+     
       tableBody.appendChild(tr);
     });
   }

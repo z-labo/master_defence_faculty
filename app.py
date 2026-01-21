@@ -134,8 +134,9 @@ def load_all_votes_from_dropbox():
   return records
 
 def aggregate_votes(records):
-  # (judgeId, participantId) -> (ts, score, comment, pname)
   latest = {}
+
+  all_judges = set()
 
   for rec in records:
     judge_id = rec.get("judgeId")
@@ -144,23 +145,14 @@ def aggregate_votes(records):
 
     if not judge_id:
       continue
-    judge_id = str(judge_id).strip()
-    if not judge_id:
-      continue
+
+    all_judges.add(judge_id)
 
     for entry in results:
       pid = entry.get("participantId")
+      pname = entry.get("presenter") or "" 
       score = entry.get("score")
       comment = entry.get("comment") or ""
-
-      # ✅ 참가자 이름 필드: 클라이언트가 어떤 키로 보내든 대응
-      pname = (
-        entry.get("participantName")
-        or entry.get("presenter")
-        or entry.get("presenterName")
-        or entry.get("name")
-        or ""
-      )
 
       if not pid:
         continue
@@ -172,7 +164,6 @@ def aggregate_votes(records):
 
   # 참가자별 집계
   participants = {}
-  pid_to_name = {}
 
   for (judge_id, pid), (ts, score, comment, pname) in latest.items():
     if score is None:
@@ -182,14 +173,6 @@ def aggregate_votes(records):
     except Exception:
       continue
 
-    # ✅ 이름 누적
-    if isinstance(pname, str):
-      pname = pname.strip()
-    else:
-      pname = ""
-    if pname:
-      pid_to_name[pid] = pname
-
     p = participants.setdefault(pid, {
       "participantId": pid,
       "participantName": "",
@@ -197,16 +180,22 @@ def aggregate_votes(records):
       "voteCount": 0,
       "details": []
     })
-    p["totalScore"] += s
-    p["voteCount"] += 1
-    p["details"].append({
-      "judgeId": judge_id,
-      "score": s,
-      "comment": comment,
-      "timestamp": ts
+
+
+    if pname: 
+      p["participantName"] = pname
+  
+      p["totalScore"] += s
+      p["voteCount"] += 1
+      p["details"].append({
+        "judgeId": judge_id,
+        "score": s,
+        "comment": comment,
+        "timestamp": ts
     })
 
   result_list = []
+  
   for pid, info in participants.items():
     cnt = info["voteCount"]
     avg = info["totalScore"] / cnt if cnt > 0 else 0.0
