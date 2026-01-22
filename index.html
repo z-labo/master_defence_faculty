@@ -580,7 +580,6 @@
 
       const scores = normalizeScores(loadScores());
 
-      /*
       const allItemsCount = Object.values(DATA.items_by_date).reduce((acc, arr) => acc + arr.length, 0);
       const filled = Object.keys(scores).length;
 
@@ -602,16 +601,15 @@
         alert(`未選択の項目があります（${filled}/${allItemsCount}）。すべての発表に対してスコアまたは「評価しない」を選択してください。`);
         return;
       }
-      */
 
       const entries = [];
       for (const date of DATA.dates) {
         for (const item of DATA.items_by_date[date]) {
           const k = keyFor(item);
-          const score = scores[k];
+          const rawScore = scores[k];
           // "skip"の場合はnull、数値の場合はそのまま
-          if (typeof score !== 'number' || !Number.isFinite(score)) continue;
-
+          const score = (rawScore === "skip") ? null : (typeof rawScore === 'number' ? rawScore : null);
+          const skipped = (rawScore === "skip");
           entries.push({
             presenterId: String(item.no),
             date,
