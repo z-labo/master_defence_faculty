@@ -190,7 +190,7 @@ def aggregate_votes(records):
         })
 
         if pname:
-            p["prensenter"] = pname
+            p["presenter"] = pname
 
         p["totalScore"] += s
         p["voteCount"] += 1
@@ -224,6 +224,20 @@ def api_results():
     try:
         records = load_all_votes_from_dropbox()
         agg = aggregate_votes(records)
+
+        raw = request.args.get("raw", "").lower() in ("1", "true", "yes")
+
+        if raw:
+            # 필요 최소만 내려서 payload를 줄임(원본 전체도 가능)
+            raw_votes = []
+            for r in records:
+                raw_votes.append({
+                    "evaluatorName": r.get("evaluatorName", ""),
+                    "timestamp": r.get("serverReceivedAt") or r.get("timestamp") or "",
+                    "results": r.get("results") or []
+                })
+            agg["rawVotes"] = raw_votes
+
         return jsonify(agg)
     except Exception as e:
         print("Aggregate error:", repr(e))

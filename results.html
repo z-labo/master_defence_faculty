@@ -205,6 +205,17 @@
         }
       }
 
+      async function fetchRawVotes() {
+        const res = await fetch(API_URL + "?raw=1", { cache: "no-store" });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error("HTTP " + res.status + " " + text);
+        }
+        const data = await res.json();
+        if (!data.ok) throw new Error("API error: " + (data.error || "unknown"));
+        return data.rawVotes || [];
+      }
+
       function renderResults(data) {
         const all_presenters = Array.isArray(data.all_presenters) ? data.all_presenters : [];
         const lastUpdated = data.lastUpdated || "-";
@@ -268,83 +279,112 @@
         return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
       }
 
-      function buildDetailCsv(data) {
-        const all_presenters = Array.isArray(data?.all_presenters) ? data.all_presenters : [];
+      function buildDetailCsvFromRawVotes(rawVotes) {
+        const votes = Array.isArray(rawVotes) ? rawVotes : [];
 
-        // 1) evaluator(문자열) 전체 집합 수집: details[].evaluator 사용
-        const evalSet = new Set();
-        for (const p of all_presenters) {
-          const details = Array.isArray(p.details) ? p.details : [];
-          for (const d of details) {
-            const ev = (d && d.evaluator != null) ? String(d.evaluator) : "";
-            if (ev) evalSet.add(ev);
+        // evaluator 컬럼(표시 문자열): evaluatorName 사용
+        const evaluators = votes
+          .map(v => (v?.evaluatorName != null) ? String(v.evaluatorName) : "")
+          .filter(Boolean)
+          .sort();
+
+        // presenter 목록 수집 (presenterId -> presenterName)
+        const presenterMap = new Map();
+        for (const v of votes) {
+          const results = Array.isArray(v?.results) ? v.results : [];
+          for (const r of results) {
+            const pid = (r?.presenterId != null) ? String(r.presenterId) : "";
+            if (!pid) continue;
+            const pname = (r?.presenter != null) ? String(r.presenter) : "";
+            if (!presenterMap.has(pid)) presenterMap.set(pid, pname);
           }
         }
-        const evaluators = Array.from(evalSet).sort();
 
-        // 2) 헤더: presenterId, presenterName + evaluators...
+        const presenterIds = Array.from(presenterMap.keys()).sort((a, b) => Number(a) - Number(b));
+
+        // matrix: presenterId -> (evaluatorName -> score)
+        const matrix = new Map();
+        for (const pid of presenterIds) matrix.set(pid, new Map());
+
+        for (const v of votes) {
+          const ev = (v?.evaluatorName != null) ? String(v.evaluatorName) : "";
+          if (!ev) continue;
+
+          const results = Array.isArray(v?.results) ? v.results : [];
+          for (const r of results) {
+            const pid = (r?.presenterId != null) ? String(r.presenterId) : "";
+            if (!pid || !matrix.has(pid)) continue;
+
+            const sc = r?.score;
+            if (typeof sc === "number" && Number.isFinite(sc)) {
+              matrix.get(pid).set(ev, sc);
+            }
+            // 없으면 빈칸 유지
+          }
+        }
+
         const header = ["presenterId", "presenterName", ...evaluators];
         const rows = [header];
 
-        // 3) 각 presenter row: evaluator별 score 채우기(없으면 빈칸)
-        for (const p of all_presenters) {
-          const rowMap = new Map(); // evaluator(string) -> score
-          const details = Array.isArray(p.details) ? p.details : [];
+        for (const pid of presenterIds) {
+          const pname = presenterMap.get(pid) || "";
+          const row = [pid, pname];
+          const rowMap = matrix.get(pid);
 
-          for (const d of details) {
-            const ev = (d && d.evaluator != null) ? String(d.evaluator) : "";
-            if (!ev) continue;
-
-            const sc = d.score;
-            if (typeof sc === "number" && Number.isFinite(sc)) rowMap.set(ev, sc);
-            // 숫자 아니면 기록하지 않음(빈칸 유지)
+          for (const ev of evaluators) {
+            row.push(rowMap?.has(ev) ? String(rowMap.get(ev)) : "");
           }
-
-          const presenterName =
-            (p.presenterName != null) ? String(p.presenterName)
-            : (p.presenter != null) ? String(p.presenter)
-            : "";
-
-          const row = [
-            (p.presenterId != null) ? String(p.presenterId) : "",
-            presenterName
-          ];
-
-          for (const e of evaluators) {
-            row.push(rowMap.has(e) ? String(rowMap.get(e)) : "");
-          }
-
           rows.push(row);
         }
 
         return rows.map(r => r.map(csvEscape).join(",")).join("\r\n");
       }
 
-
       function downloadTextAsFile(text, filename, mime = "text/csv;charset=utf-8") {
-        const blob = new Blob([text], { type: mime }); // :contentReference[oaicite:1]{index=1}
-        const bom = "\uFEFF";
-        const url = URL.createObjectURL(blob);         // :contentReference[oaicite:2]{index=2}
+        const bom = "\uFEFF"; // Excel용 UTF-8 BOM
+        const blob = new Blob([bom + text], { type: mime });
+        const url = URL.createObjectURL(blob);
+
         const a = document.createElement("a");
         a.href = url;
-        a.download = filename;                         // :contentReference[oaicite:3]{index=3}
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();
+
         URL.revokeObjectURL(url);
       }
 
+
       if (downloadBtn) {
-        downloadBtn.addEventListener("click", () => {
-          if (!latestData) {
-            alert("先に集計データを取得してください。");
-            return;
+        downloadBtn.addEventListener("click", async () => {
+          try {
+            statusDiv.textContent = "詳細データを取得中です...";
+            statusDiv.className = "status";
+            downloadBtn.disabled = true;
+
+            const rawVotes = await fetchRawVotes();
+            if (!Array.isArray(rawVotes) || rawVotes.length === 0) {
+              alert("詳細データ(rawVotes)がありません。");
+              return;
+            }
+
+            const csv = buildDetailCsvFromRawVotes(rawVotes);
+            const ts = new Date().toISOString().replace(/[:.]/g, "-");
+            downloadTextAsFile(csv, `detail_results_${ts}.csv`);
+
+            statusDiv.textContent = "CSVを生成しました。";
+            statusDiv.className = "status ok";
+          } catch (err) {
+            console.error(err);
+            statusDiv.textContent = "詳細データ取得/CSV生成でエラー: " + err.message;
+            statusDiv.className = "status error";
+          } finally {
+            downloadBtn.disabled = false;
           }
-          const csv = buildDetailCsv(latestData);
-          const ts = new Date().toISOString().replace(/[:.]/g, "-");
-          downloadTextAsFile(csv, `detail_results_${ts}.csv`);
         });
       }
+
       
       fetchResults();
       if (refreshBtn) refreshBtn.addEventListener('click', fetchResults);
