@@ -108,160 +108,155 @@
     }
   </style>
 </head>
+
 <body>
-<div class="container">
-  <h1>令和7年度 宇都宮大学大学院 光工学プログラム 修士論文発表会 集計結果（教員）</h1>
-  <div class="subtitle">
-    Dropbox フォルダ <code>/vote_results</code> に保存された JSON を元に、参加者ごとの平均点・票数をリアルタイムで集計表示します。
-  </div>
+  <div class="container">
+    <h1>令和7年度 宇都宮大学大学院 光工学プログラム 修士論文発表会 集計結果（教員）</h1>
 
-  <div class="info-bar">
-    <div>
-      <span id="last-updated">最終更新: -</span>
-      <span id="record-count" style="margin-left:8px;">(発表者数: -)</span>
-      <span id="judge-count" style="margin-left:8px;">(評価者数: -)</span>
-
+    <div class="subtitle">
+      Dropbox フォルダ <code>/vote_results</code> に保存された JSON を元に、参加者ごとの平均点・票数をリアルタイムで集計表示します。
     </div>
-    <div>
-      <button class="btn" id="refresh-btn">再読み込み</button>
-      <span class="small" style="margin-left:6px;">※ 必要に応じて手動で更新してください。</span>
+
+    <div class="info-bar">
+      <div>
+        <span id="last-updated">最終更新: -</span>
+        <span id="record-count" style="margin-left:8px;">(発表者数: -)</span>
+      </div>
+
+      <div>
+        <button class="btn" id="refresh-btn">再読み込み</button>
+        <span class="small" style="margin-left:6px;">※ 必要に応じて手動で更新してください。</span>
+      </div>
     </div>
-  </div>
 
-  <div id="status" class="status"></div>
+    <div id="status" class="status"></div>
 
-  <table id="result-table">
-    <thead>
-      <tr>
-        <th style="width: 8%;">順位</th>
-        <th style="width: 15%;">発表者番号</th>
-        <th style="width: 15%;">発表者名</th> 
-        <th style="width: 15%;">平均点</th>
-        <th style="width: 15%;">票数</th>
-        <th style="width: 15%;">合計点</th>
-        <!-- <th>詳細</th> -->
-      </tr>
-    </thead>
-    <tbody>
-      <!-- JSで埋め込み -->
-    </tbody>
-  </table>
+    <table id="result-table">
+      <thead>
+        <tr>
+          <th style="width: 8%;">順位</th>
+          <th style="width: 15%;">発表者番号</th>
+          <th style="width: 15%;">発表者名</th>
+          <th style="width: 15%;">平均点</th>
+          <th style="width: 15%;">票数</th>
+          <th style="width: 15%;">合計点</th>
+          <!-- <th>詳細</th> -->
+        </tr>
+      </thead>
+      <tbody>
+        <!-- JSで埋め込み -->
+      </tbody>
+    </table>
   
-  <!--
-  <div class="details">
-    <div class="small">
-      ※ 「詳細」列には、各参加者に対してどの審査委員が何点を付けたか（コメント含む）を簡易的に表示します。  
-      より詳細な分析が必要な場合は、元の JSON ファイルをダウンロードしてスクリプト等で処理してください。
+    <!--
+    <div class="details">
+      <div class="small">
+        ※ 「詳細」列には、各参加者に対してどの審査委員が何点を付けたか（コメント含む）を簡易的に表示します。  
+        より詳細な分析が必要な場合は、元の JSON ファイルをダウンロードしてスクリプト等で処理してください。
+      </div>
     </div>
+    -->
   </div>
-  -->
-</div>
 
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const API_URL = "https://master-s-thesis-presentation-session.onrender.com/api/results";
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const API_URL = "https://master-s-thesis-presentation-session.onrender.com/api/results";
 
-  const lastUpdatedSpan = document.getElementById('last-updated');
-  const recordCountSpan = document.getElementById('record-count');
-  const judgeCountSpan  = document.getElementById('judge-count');
-  const statusDiv = document.getElementById('status');
-  const tableBody = document.querySelector('#result-table tbody');
-  const refreshBtn = document.getElementById('refresh-btn');
+      const lastUpdatedSpan = document.getElementById('last-updated');
+      const recordCountSpan = document.getElementById('record-count');
+      const statusDiv = document.getElementById('status');
+      const tableBody = document.querySelector('#result-table tbody');
+      const refreshBtn = document.getElementById('refresh-btn');
 
-  console.log("DOM refs:", { lastUpdatedSpan, recordCountSpan, judgeCountSpan, tableBody, refreshBtn, statusDiv });
+      async function fetchResults() {
+        if (!statusDiv || !refreshBtn) return; // 최소 방어
+        statusDiv.textContent = "サーバーから集計データを取得中です...";
+        statusDiv.className = "status";
+        refreshBtn.disabled = true;
 
-  async function fetchResults() {
-    if (!statusDiv || !refreshBtn) return; // 최소 방어
-    statusDiv.textContent = "サーバーから集計データを取得中です...";
-    statusDiv.className = "status";
-    refreshBtn.disabled = true;
-
-    try {
-      const res = await fetch(API_URL, { cache: "no-store" });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error("HTTP " + res.status + " " + text);
+        try {
+          const res = await fetch(API_URL, { cache: "no-store" });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error("HTTP " + res.status + " " + text);
+          }
+          const data = await res.json();
+          if (!data.ok) {
+            throw new Error("API error: " + (data.error || "unknown"));
+          }
+          renderResults(data);
+          statusDiv.textContent = "更新完了";
+          statusDiv.className = "status ok";
+        } catch (err) {
+          console.error(err);
+          statusDiv.textContent = "集計データの取得中にエラーが発生しました。 (" + err.message + ")";
+          statusDiv.className = "status error";
+        } finally {
+          refreshBtn.disabled = false;
+        }
       }
-      const data = await res.json();
-      if (!data.ok) {
-        throw new Error("API error: " + (data.error || "unknown"));
-      }
-      renderResults(data);
-      statusDiv.textContent = "更新完了";
-      statusDiv.className = "status ok";
-    } catch (err) {
-      console.error(err);
-      statusDiv.textContent = "集計データの取得中にエラーが発生しました。 (" + err.message + ")";
-      statusDiv.className = "status error";
-    } finally {
-      refreshBtn.disabled = false;
-    }
-  }
 
-  function renderResults(data) {
+      function renderResults(data) {
+        const all_presenters = Array.isArray(data.all_presenters) ? data.all_presenters : [];
+        const lastUpdated = data.lastUpdated || "-";
+        const totalEvaluators = data.totalEvaluators || 0;
 
-    const participants = Array.isArray(data.participants) ? data.participants : [];
-    const lastUpdated = data.lastUpdated || "-";
-    const totalJudges = data.totalJudges || 0;
+        lastUpdatedSpan.textContent = "最終更新: " + lastUpdated;
+        recordCountSpan.textContent = "(発表者数: " + all_presenters.length + " / 審査委員数: " + totalEvaluators + ")";
 
-    lastUpdatedSpan.textContent = "最終更新: " + lastUpdated;
-    recordCountSpan.textContent = "(参加者数: " + participants.length + 
-                                 " / 審査委員数: " + totalJudges + ")";
+        tableBody.innerHTML = "";
 
-    tableBody.innerHTML = "";
+        all_presenters.forEach((p, idx) => {
+          const tr = document.createElement('tr');
 
-    participants.forEach((p, idx) => {
-      const tr = document.createElement('tr');
+          const rankTd = document.createElement('td');
+          rankTd.textContent = idx + 1;
+          tr.appendChild(rankTd);
 
-      const rankTd = document.createElement('td');
-      rankTd.textContent = idx + 1;
-      tr.appendChild(rankTd);
+          const idTd = document.createElement('td');
+          idTd.textContent = p.presenterId;
+          tr.appendChild(idTd);
 
-      const idTd = document.createElement('td');
-      idTd.textContent = p.participantId;
-      tr.appendChild(idTd);
+          const nameTd = document.createElement('td');
+          nameTd.textContent = p.presenter || "-";
+          tr.appendChild(nameTd);
 
-      const nameTd = document.createElement('td');
-      nameTd.textContent = p.participantName || "-";
-      tr.appendChild(nameTd);
+          const avgTd = document.createElement('td');
+          avgTd.textContent = Number(p.avgScore ?? 0).toFixed(3);
+          tr.appendChild(avgTd);
 
-      const avgTd = document.createElement('td');
-      avgTd.textContent = Number(p.avgScore ?? 0).toFixed(3);
-      tr.appendChild(avgTd);
+          const cntTd = document.createElement('td');
+          cntTd.textContent = p.voteCount + " / " + totalEvaluators; 
+          tr.appendChild(cntTd);
 
-      const cntTd = document.createElement('td');
-      cntTd.textContent = p.voteCount + " / " + totalJudges; 
-      tr.appendChild(cntTd);
-
-      const totalTd = document.createElement('td');
-      totalTd.textContent = Number(p.totalScore ?? 0).toFixed(3);
-      tr.appendChild(totalTd);
-      
-      /*
-      const detailTd = document.createElement('td');
-      const details = p.details || [];
-      if (details.length === 0) {
-        detailTd.textContent = "-";
-      } else {
-        const lines = details.map(d => {
-          const j = d.judgeId || "-";
-          const s = (d.score != null) ? d.score.toString() : "-";
-          const c = d.comment ? d.comment : "";
-          return `${j}: ${s}点 ${c}`;
+          const totalTd = document.createElement('td');
+          totalTd.textContent = Number(p.totalScore ?? 0).toFixed(3);
+          tr.appendChild(totalTd);
+          
+          /*
+          const detailTd = document.createElement('td');
+          const details = p.details || [];
+          if (details.length === 0) {
+            detailTd.textContent = "-";
+          } else {
+            const lines = details.map(d => {
+              const j = d.judgeId || "-";
+              const s = (d.score != null) ? d.score.toString() : "-";
+              const c = d.comment ? d.comment : "";
+              return `${j}: ${s}点 ${c}`;
+            });
+            detailTd.textContent = lines.join(" / ");
+          }
+          tr.appendChild(detailTd);
+          */
+         
+          tableBody.appendChild(tr);
         });
-        detailTd.textContent = lines.join(" / ");
       }
-      tr.appendChild(detailTd);
-      */
-     
-      tableBody.appendChild(tr);
+
+      fetchResults();
+      if (refreshBtn) refreshBtn.addEventListener('click', fetchResults);
     });
-  }
-
-  fetchResults();
-  if (refreshBtn) refreshBtn.addEventListener('click', fetchResults);
-});
-</script>
-
+  </script>
 </body>
 </html>

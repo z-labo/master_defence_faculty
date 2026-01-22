@@ -126,8 +126,13 @@
       <div>
         <button class="btn" id="refresh-btn">再読み込み</button>
         <span class="small" style="margin-left:6px;">※ 必要に応じて手動で更新してください。</span>
-      </div>
+      </div>  
+
+      <div>
+        <button class="btn" id="download-detail-btn">詳細結果をダウンロード</button>
+      </div>  
     </div>
+    
 
     <div id="status" class="status"></div>
 
@@ -167,6 +172,9 @@
       const statusDiv = document.getElementById('status');
       const tableBody = document.querySelector('#result-table tbody');
       const refreshBtn = document.getElementById('refresh-btn');
+      const downloadBtn = document.getElementById('download-detail-btn');
+      let latestData = null;
+
 
       async function fetchResults() {
         if (!statusDiv || !refreshBtn) return; // 최소 방어
@@ -184,6 +192,7 @@
           if (!data.ok) {
             throw new Error("API error: " + (data.error || "unknown"));
           }
+          latestData = data;
           renderResults(data);
           statusDiv.textContent = "更新完了";
           statusDiv.className = "status ok";
@@ -254,6 +263,82 @@
         });
       }
 
+      function csvEscape(v) { 
+        const s = (v == null) ? "" : String(v);
+        return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }
+
+      function buildDetailCsv(data) {
+        const all_presenters = Array.isArray(data?.all_presenters) ? data.all_presenters : [];
+
+        // 1) evaluator(=judgeId) 전체 집합 수집
+        const evalSet = new Set();
+        for (const p of all_presenters) {
+          const details = Array.isArray(p.details) ? p.details : [];
+          for (const d of details) {
+            if (d && d.judgeId != null) evalSet.add(String(d.judgeId));
+          }
+        }
+        const evaluators = Array.from(evalSet).sort(); // 정렬(원하면 제거 가능)
+
+        // 2) 헤더: presenterId, presenter + evaluators...
+        const header = ["presenterId", "presenter", ...evaluators];
+
+        // 3) 각 presenter row: evaluator별 score 채우기(없으면 빈칸)
+        const rows = [header];
+
+        for (const p of all_presenters) {
+          const rowMap = new Map(); // judgeId -> score
+          const details = Array.isArray(p.details) ? p.details : [];
+          for (const d of details) {
+            const jid = (d && d.judgeId != null) ? String(d.judgeId) : null;
+            if (!jid) continue;
+            // score가 숫자면 기록, 아니면 빈칸 유지
+            const sc = d.score;
+            if (typeof sc === "number" && Number.isFinite(sc)) rowMap.set(jid, sc);
+          }
+
+          const row = [
+            (p.presenterId != null) ? String(p.presenterId) : "",
+            (p.presenter != null) ? String(p.presenter) : ""
+          ];
+
+          for (const e of evaluators) {
+            const v = rowMap.has(e) ? rowMap.get(e) : "";
+            row.push(v === "" ? "" : String(v));
+          }
+
+          rows.push(row);
+        }
+
+        // CSV 문자열 생성
+        return rows.map(r => r.map(csvEscape).join(",")).join("\r\n");
+      }
+
+      function downloadTextAsFile(text, filename, mime = "text/csv;charset=utf-8") {
+        const blob = new Blob([text], { type: mime }); // :contentReference[oaicite:1]{index=1}
+        const url = URL.createObjectURL(blob);         // :contentReference[oaicite:2]{index=2}
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;                         // :contentReference[oaicite:3]{index=3}
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      if (downloadBtn) {
+        downloadBtn.addEventListener("click", () => {
+          if (!latestData) {
+            alert("先に集計データを取得してください。");
+            return;
+          }
+          const csv = buildDetailCsv(latestData);
+          const ts = new Date().toISOString().replace(/[:.]/g, "-");
+          downloadTextAsFile(csv, `detail_results_${ts}.csv`);
+        });
+      }
+      
       fetchResults();
       if (refreshBtn) refreshBtn.addEventListener('click', fetchResults);
     });

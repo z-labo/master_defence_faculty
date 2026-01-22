@@ -514,6 +514,7 @@
 
       const scores = normalizeScores(loadScores());
 
+      /*
       const allItemsCount = Object.values(DATA.items_by_date).reduce((acc, arr) => acc + arr.length, 0);
       const filled = Object.keys(scores).length;
 
@@ -534,12 +535,17 @@
         alert(`未入力または間違った入力があります（${filled}/${allItemsCount}）。`);
         return;
       }
+      */
 
       const entries = [];
       for (const date of DATA.dates) {
         for (const item of DATA.items_by_date[date]) {
           const k = keyFor(item);
-          const score = (typeof scores[k] === 'number') ? scores[k] : null;
+          const score = scores[k];
+
+          /*const score = (typeof scores[k] === 'number') ? scores[k] : null;*/
+          if (typeof score !== 'number' || !Number.isFinite(score)) continue;
+
           entries.push({
             presenterId: String(item.no),
             date,
