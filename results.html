@@ -183,7 +183,7 @@
         refreshBtn.disabled = true;
 
         try {
-          const res = await fetch(API_URL, { cache: "no-store" });
+          const res = await fetch(API_URL + "?raw=1&raw=true", { cache: "no-store" });
           if (!res.ok) {
             const text = await res.text();
             throw new Error("HTTP " + res.status + " " + text);
@@ -213,7 +213,10 @@
         }
         const data = await res.json();
         if (!data.ok) throw new Error("API error: " + (data.error || "unknown"));
-        return data.rawVotes || [];
+        console.log("raw endpoint keys:", Object.keys(data), "rawVotes length:", (data.rawVotes || []).length);
+
+        return data.rawVotes || data.raw_votes || data.records || data.votes || [];
+
       }
 
       function renderResults(data) {
